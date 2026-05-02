@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Roots — Pedigree Layout Demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <title>Roots — Pedigree Layout Demo (Zoomable)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
@@ -18,6 +18,50 @@
             top: 0; left: 0; right: 0; bottom: 0;
             overflow: auto;
             -webkit-overflow-scrolling: touch;
+        }
+
+        .zoom-wrap {
+            transform-origin: 0 0;
+            transition: transform 0.2s ease;
+        }
+
+        .zoom-controls {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 100;
+        }
+
+        .zoom-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: none;
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.1s;
+        }
+
+        .zoom-btn:active { transform: scale(0.92); }
+        .zoom-level {
+            font-size: 11px;
+            font-weight: 600;
+            color: #666;
+            text-align: center;
+            background: #fff;
+            padding: 4px 0;
+            border-radius: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
         }
 
         .tree-wrap {
@@ -97,9 +141,18 @@
 </head>
 <body>
     <div class="tree-scroll" id="treeScroll">
-        <div class="tree-wrap" id="treeWrap">
-            <svg class="lines-svg" id="linesSvg"></svg>
+        <div class="zoom-wrap" id="zoomWrap">
+            <div class="tree-wrap" id="treeWrap">
+                <svg class="lines-svg" id="linesSvg"></svg>
+            </div>
         </div>
+    </div>
+
+    <div class="zoom-controls">
+        <button class="zoom-btn" onclick="zoomIn()">+</button>
+        <div class="zoom-level" id="zoomLevel">100%</div>
+        <button class="zoom-btn" onclick="zoomOut()">−</button>
+        <button class="zoom-btn" onclick="zoomReset()" title="Reset zoom">⟲</button>
     </div>
 
     <script>
@@ -432,6 +485,65 @@
                 scroll.scrollLeft = 0;
             }
         }, 50);
+
+        // === ZOOM CONTROLS ===
+        let currentZoom = 1;
+        const zoomWrap = document.getElementById('zoomWrap');
+        const zoomLevel = document.getElementById('zoomLevel');
+        const ZOOM_STEP = 0.15;
+        const MIN_ZOOM = 0.25;
+        const MAX_ZOOM = 3;
+
+        function applyZoom() {
+            zoomWrap.style.transform = 'scale(' + currentZoom + ')';
+            zoomLevel.textContent = Math.round(currentZoom * 100) + '%';
+            // After zoom, redraw lines
+            setTimeout(drawLines, 250);
+        }
+
+        window.zoomIn = function() {
+            currentZoom = Math.min(currentZoom + ZOOM_STEP, MAX_ZOOM);
+            applyZoom();
+        };
+
+        window.zoomOut = function() {
+            currentZoom = Math.max(currentZoom - ZOOM_STEP, MIN_ZOOM);
+            applyZoom();
+        };
+
+        window.zoomReset = function() {
+            currentZoom = 1;
+            applyZoom();
+        };
+
+        // Pinch-to-zoom support on mobile
+        let initialDistance = 0;
+        let initialZoom = 1;
+
+        scroll.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                initialDistance = Math.hypot(
+                    e.touches[0].pageX - e.touches[1].pageX,
+                    e.touches[0].pageY - e.touches[1].pageY
+                );
+                initialZoom = currentZoom;
+            }
+        });
+
+        scroll.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2) {
+                e.preventDefault();
+                const distance = Math.hypot(
+                    e.touches[0].pageX - e.touches[1].pageX,
+                    e.touches[0].pageY - e.touches[1].pageY
+                );
+                currentZoom = Math.min(Math.max(
+                    initialZoom * (distance / initialDistance),
+                    MIN_ZOOM
+                ), MAX_ZOOM);
+                applyZoom();
+            }
+        });
     })();
     </script>
 </body>

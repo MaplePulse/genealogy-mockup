@@ -558,51 +558,63 @@
             }
         }
 
-        // Position rightmost gen vertically
-        let y = 0;
         const lastG = numG - 1;
-        for (let i = 0; i < (cards[lastG] || []).length; i++) {
-            positions[lastG][i] = y;
-            y += heights[lastG][i] + 16;
-        }
 
-        // Center parents between their children
-        for (let g = lastG - 1; g >= 0; g--) {
+        // Initialize all positions to 0
+        for (let g = 0; g < numG; g++) {
             if (!cards[g]) continue;
             for (let i = 0; i < cards[g].length; i++) {
-                const pid = gens[g][i];
-                const person = allPeople[pid];
-                if (!person.parents) {
-                    positions[g][i] = positions[g+1] && positions[g+1].length ? positions[g+1][0] : 0;
-                    continue;
-                }
-                const idxs = person.parents.map(p => gens[g+1] ? gens[g+1].indexOf(p) : -1).filter(x => x >= 0);
-                if (idxs.length === 2) {
-                    const y1 = positions[g+1][idxs[0]] + heights[g+1][idxs[0]] / 2;
-                    const y2 = positions[g+1][idxs[1]] + heights[g+1][idxs[1]] / 2;
-                    positions[g][i] = (y1 + y2) / 2 - heights[g][i] / 2;
-                } else if (idxs.length === 1) {
-                    positions[g][i] = positions[g+1][idxs[0]] + heights[g+1][idxs[0]] / 2 - heights[g][i] / 2;
-                } else {
-                    positions[g][i] = positions[g+1] && positions[g+1].length ? positions[g+1][0] : 0;
-                }
+                positions[g][i] = 0;
             }
         }
 
-        // Collision resolution: if two cards in same gen overlap, push apart
-        for (let g = 0; g < numG; g++) {
-            if (!cards[g] || cards[g].length < 2) continue;
-            for (let pass = 0; pass < 3; pass++) {
-                let moved = false;
-                for (let i = 1; i < cards[g].length; i++) {
-                    const prevBottom = positions[g][i-1] + heights[g][i-1];
-                    if (positions[g][i] < prevBottom + 8) {
-                        positions[g][i] = prevBottom + 8;
+        // Iterative layout: bottom-up centering + collision resolution
+        for (let pass = 0; pass < 15; pass++) {
+            let moved = false;
+
+            // Bottom-up: center each parent between its children
+            for (let g = lastG - 1; g >= 0; g--) {
+                if (!cards[g]) continue;
+                for (let i = 0; i < cards[g].length; i++) {
+                    const pid = gens[g][i];
+                    const person = allPeople[pid];
+                    if (!person.parents) continue;
+
+                    const idxs = person.parents.map(p => gens[g+1] ? gens[g+1].indexOf(p) : -1).filter(x => x >= 0);
+                    if (idxs.length === 0) continue;
+
+                    let target;
+                    if (idxs.length === 2) {
+                        const y1 = positions[g+1][idxs[0]] + heights[g+1][idxs[0]] / 2;
+                        const y2 = positions[g+1][idxs[1]] + heights[g+1][idxs[1]] / 2;
+                        target = (y1 + y2) / 2 - heights[g][i] / 2;
+                    } else {
+                        target = positions[g+1][idxs[0]] + heights[g+1][idxs[0]] / 2 - heights[g][i] / 2;
+                    }
+
+                    if (Math.abs(positions[g][i] - target) > 0.5) {
+                        positions[g][i] = target;
                         moved = true;
                     }
                 }
-                if (!moved) break;
             }
+
+            // Top-down collision: push apart overlapping cards (and all cards after them)
+            for (let g = 0; g < numG; g++) {
+                if (!cards[g] || cards[g].length < 2) continue;
+                for (let i = 1; i < cards[g].length; i++) {
+                    const prevBottom = positions[g][i-1] + heights[g][i-1];
+                    if (positions[g][i] < prevBottom + 8) {
+                        const shift = (prevBottom + 8) - positions[g][i];
+                        for (let j = i; j < cards[g].length; j++) {
+                            positions[g][j] += shift;
+                        }
+                        moved = true;
+                    }
+                }
+            }
+
+            if (!moved) break;
         }
         for (let g = 0; g < numG; g++) {
             if (!cards[g]) continue;

@@ -378,7 +378,7 @@
 
         'p300': { name: "Joseph Mooney", years: "1878\u2013?", status: "probable", gen: 3, parents: ['p400','p401'], sources: [], suggestion: null },
         'p301': { name: "Catherine Farrell", years: "b. 1883", status: "probable", gen: 3, parents: ['p402','p403'], sources: [], suggestion: null },
-        'p302': { name: "Edward Lynch", years: "1868\u2013?", status: "probable", gen: 3, parents: ['p404','p405'], sources: [], suggestion: null },
+        'p302': { name: "Edward Lynch", years: "1868\u2013?", status: "probable", gen: 3, parents: null, sources: [], suggestion: null },
         'p303': { name: "Mary Graham", years: "1868\u2013?", status: "probable", gen: 3, parents: ['p406','p407'], sources: [], suggestion: null },
         'p304': { name: "James George R Craigie", years: "b. 1872, England", status: "probable", gen: 3, parents: ['p408','p409'], sources: [], suggestion: null },
         'p305': { name: "Agnes Dow Craigie", years: "?", status: "probable", gen: 3, parents: ['p410','p411'], sources: [], suggestion: null },
@@ -393,11 +393,18 @@
             {title: "Birth Certificate", meta: "Lochee, 22 Mar 1857 — illegitimate, mother Hannah Mooney Mill Worker, 130 Liff Road", status: "confirmed"},
             {title: "Death Certificate", meta: "Lochee, 22 Dec 1911 — Alcohol Poisoning. Age stated as 49. Occupation: Jute Mill Worker. Widow Catherine Mooney (née Lynch). Mother: Hannah Mooney, Jute Spinner (deceased).", status: "confirmed"}
         ], suggestion: {text: "Age discrepancy: birth cert says b.1857 (~age 54 at death) but death cert says age 49. Verify via 1871/1881 census.", price: "Free"} },
-        'p401': { name: "Catherine Lynch", years: "b. 1858", status: "probable", gen: 4, parents: null, sources: [], suggestion: null },
+        'p401': { name: "Catherine Lynch", years: "~1858–?", status: "confirmed", gen: 4, parents: ['p405'], sources: [
+            {title: "Marriage Certificate", meta: "Lochee, 30 Jan 1880 — Age 22 (b. ~1858). Spinster, Spinner (Jute Mill), 7 Albert Street, Lochee. Parents: Thomas Lynch (Linen Weaver) + Catherine Lynch M.S. Welsh (deceased). Witness Mary Ann Duffy. Both parties signed names (literate).", status: "confirmed"},
+            {title: "Death Certificate (husband)", meta: "Lochee, 22 Dec 1911 — listed as widow Catherine Mooney, present at death. Signed X mark (illiterate in old age).", status: "confirmed"}
+        ], suggestion: {text: "Search 1851 census for Catherine Lynch age ~3, living with Thomas Lynch (Linen Weaver) + Catherine Welsh in Dundee. Or search marriage of Thomas Lynch + Catherine Welsh.", price: "Free search"} },
         'p402': { name: "James Farrell", years: "?", status: "probable", gen: 4, parents: null, sources: [], suggestion: null },
         'p403': { name: "Helen McDonald", years: "?", status: "probable", gen: 4, parents: null, sources: [], suggestion: null },
-        'p404': { name: "Owen Lynch", years: "1833\u2013?", status: "probable", gen: 4, parents: null, sources: [], suggestion: null },
-        'p405': { name: "Alice Rogers", years: "1831\u2013?", status: "probable", gen: 4, parents: null, sources: [], suggestion: null },
+        'p404': { name: "Thomas Lynch", years: "?", status: "confirmed", gen: 4, parents: null, sources: [
+            {title: "Marriage Certificate", meta: "Lochee, 30 Jan 1880 — Father of Catherine Lynch. Linen Weaver. Wife Catherine Lynch M.S. Welsh (deceased)", status: "confirmed"}
+        ], suggestion: {text: "Search 1851 census for Thomas Lynch (Linen Weaver) + Catherine Welsh in Dundee/Lochee area", price: "Free search"} },
+        'p405': { name: "Catherine Welsh", years: "?", status: "confirmed", gen: 4, parents: null, sources: [
+            {title: "Marriage Certificate", meta: "Lochee, 30 Jan 1880 — Mother of Catherine Lynch (deceased at time of marriage)", status: "confirmed"}
+        ], suggestion: {text: "Search marriage of Thomas Lynch + Catherine Welsh. Or search 1851 census for Catherine Lynch M.S. Welsh.", price: "Free search"} },
         'p406': { name: "James Graham", years: "1835\u2013?", status: "probable", gen: 4, parents: ['p502','p503'], sources: [], suggestion: null },
         'p407': { name: "Ann Reilly", years: "1844\u2013?", status: "probable", gen: 4, parents: ['p504','p505'], sources: [], suggestion: null },
         'p408': { name: "William Craigie", years: "1841\u2013?", status: "probable", gen: 4, parents: null, sources: [], suggestion: null },

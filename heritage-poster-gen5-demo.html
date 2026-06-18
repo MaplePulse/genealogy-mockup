@@ -155,9 +155,15 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0c0803; }
   max-width: 140px;
   font-size: 9px;
 }
+.nameplate[data-gen="4"] {
+  padding: 3px 8px;
+}
 .nameplate[data-gen="4"] .name {
-  max-width: 130px;
-  font-size: 9px;
+  max-width: 110px;
+  font-size: 8px;
+}
+.nameplate[data-gen="4"] .years {
+  display: none;
 }
 .nameplate[data-gen="5"] .name {
   max-width: 150px;
@@ -2668,7 +2674,7 @@ const SPOUSE_MAP = {
     const surname = parts.pop();
     const forename = parts.join(' ');
     // Gen 4+ abbreviation: initial + surname for long names
-    if (gen >= 4 && (fullName.length > 16 || forename.length > 8)) {
+    if (gen >= 4 && (fullName.length > 14 || forename.length > 7)) {
       const initial = forename.charAt(0).toUpperCase();
       return initial + '.<br>' + surname;
     }
@@ -2696,7 +2702,7 @@ const SPOUSE_MAP = {
     if (maidenName) plate.dataset.maiden = maidenName;
     const gen = parseInt(plate.dataset.gen || '0', 10);
     nameEl.innerHTML = shortName(name, gen);
-    if (years && gen !== 5) {
+    if (years && gen < 4) {
       const yearsEl = plate.querySelector('.years');
       if (yearsEl) yearsEl.textContent = years;
     }
@@ -3853,7 +3859,7 @@ function dtShortName(fullName, gen) {
   if (parts.length < 2) return fullName;
   const surname = parts.pop();
   const forename = parts.join(' ');
-  if (gen >= 4 && (fullName.length > 16 || forename.length > 8)) {
+  if (gen >= 4 && (fullName.length > 14 || forename.length > 7)) {
     const initial = forename.charAt(0).toUpperCase();
     return initial + '.<br>' + surname;
   }
@@ -3926,7 +3932,7 @@ function populatePosterFromDataTree(subjectId) {
     }
 
     plate.querySelector('.name').innerHTML = dtShortName(name, gen);
-    if (gen !== 5) {
+    if (gen < 4) {
       plate.querySelector('.years').textContent = years;
     } else {
       plate.querySelector('.years').textContent = '';

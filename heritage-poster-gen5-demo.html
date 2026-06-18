@@ -152,11 +152,11 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0c0803; }
   max-width: 150px;
 }
 .nameplate[data-gen="3"] .name {
-  max-width: 170px;
+  max-width: 140px;
   font-size: 9px;
 }
 .nameplate[data-gen="4"] .name {
-  max-width: 160px;
+  max-width: 130px;
   font-size: 9px;
 }
 .nameplate[data-gen="5"] .name {
@@ -2667,8 +2667,8 @@ const SPOUSE_MAP = {
     if (parts.length < 2) return fullName;
     const surname = parts.pop();
     const forename = parts.join(' ');
-    // Gen 5 abbreviation: initial + surname for long names
-    if (gen === 5 && (fullName.length > 16 || forename.length > 8)) {
+    // Gen 4+ abbreviation: initial + surname for long names
+    if (gen >= 4 && (fullName.length > 16 || forename.length > 8)) {
       const initial = forename.charAt(0).toUpperCase();
       return initial + '.<br>' + surname;
     }
@@ -3846,14 +3846,14 @@ function formatNameplateName(fullName) {
 }
 
 // Short name for display (mimics heritage-poster shortName)
-// Gen 5: aggressively abbreviate to fit tight outer-ring spacing
+// Gen 4+: aggressively abbreviate to fit tight outer-ring spacing
 function dtShortName(fullName, gen) {
   if (!fullName || fullName === 'Name') return 'Name';
   const parts = fullName.trim().split(/\s+/);
   if (parts.length < 2) return fullName;
   const surname = parts.pop();
   const forename = parts.join(' ');
-  if (gen === 5 && (fullName.length > 16 || forename.length > 8)) {
+  if (gen >= 4 && (fullName.length > 16 || forename.length > 8)) {
     const initial = forename.charAt(0).toUpperCase();
     return initial + '.<br>' + surname;
   }

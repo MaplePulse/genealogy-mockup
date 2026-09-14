@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VR Grid Layout Prototype</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #2a1f1a; color: #e0d6c8; font-family: 'Segoe UI', Tahoma, sans-serif; overflow: hidden; }
+#controls { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: #1a1410; padding: 8px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid #4a3a2a; }
+#controls label { font-size: 13px; color: #a09080; }
+#controls button { background: #3a2a1a; color: #e0d6c8; border: 1px solid #5a4a3a; padding: 4px 12px; cursor: pointer; border-radius: 3px; font-size: 13px; }
+#controls button:hover { background: #4a3a2a; }
+#controls select { background: #1a1410; color: #e0d6c8; border: 1px solid #5a4a3a; padding: 3px 8px; font-size: 13px; border-radius: 3px; }
+#controls input { background: #1a1410; color: #e0d6c8; border: 1px solid #5a4a3a; padding: 3px 8px; font-size: 13px; border-radius: 3px; width: 60px; }
+#treeContainer { position: absolute; top: 50px; left: 0; right: 0; bottom: 0; overflow: auto; background: #f5f0e6; }
+#treeSvg { position: absolute; top: 0; left: 0; }
+.card { position: absolute; width: 140px; height: 50px; background: #fff; border: 1px solid #ccc; border-left: 3px solid #8b7355; border-radius: 3px; padding: 4px 6px; font-size: 11px; color: #333; cursor: pointer; overflow: hidden; transition: box-shadow 0.15s; z-index: 2; }
+.card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.3); z-index: 10; }
+.card.male { border-left-color: #4a7ab0; }
+.card.female { border-left-color: #b04a7a; }
+.card.unknown { border-left-color: #8b7355; }
+.card.anchor { border: 2px solid #d4a017; box-shadow: 0 0 8px rgba(212,160,23,0.4); }
+.card-name { font-weight: bold; font-size: 11px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-dates { font-size: 10px; color: #888; line-height: 1.2; margin-top: 2px; }
+.card-gen { font-size: 8px; color: #aaa; position: absolute; bottom: 2px; right: 4px; }
+.gen-label { position: absolute; left: 4px; font-size: 10px; color: #999; font-style: italic; z-index: 1; background: #f5f0e6; padding: 0 4px; border-radius: 2px; }
+.family-panel { position: absolute; background: rgba(200, 190, 170, 0.15); border: 1px dashed rgba(180, 170, 150, 0.3); border-radius: 6px; z-index: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <label>Anchor:</label>
+  <select id="anchorSelect"></select>
+  <label>Card W:</label>
+  <input id="cardW" type="number" value="140">
+  <label>Card H:</label>
+  <input id="cardH" type="number" value="50">
+  <label>Gap X:</label>
+  <input id="gapX" type="number" value="12">
+  <label>Gap Y:</label>
+  <input id="gapY" type="number" value="80">
+  <button id="layoutBtn">Layout</button>
+  <button id="fitBtn">Fit</button>
+  <button id="loadGedBtn">Load GED</button>
+  <input id="gedFile" type="file" accept=".ged" style="display:none">
+  <span id="stats"></span>
+</div>
+
+<div id="treeContainer">
+  <div id="treeSvg"></div>
+</div>
+
+<script>const EMBEDDED_DATA = {"individuals": {"I1": {"id": "I1", "name": "Gavin /Harrow/", "sex": "M", "birth": "11 Aug 1966", "death": ""}, "I2": {"id": "I2", "name": "Joseph /Harrow/", "sex": "M", "birth": "4 Mar 1931", "death": "24 Jul 2004"}, "I3": {"id": "I3", "name": "Rose /Fenwick/", "sex": "F", "birth": "1 Dec 1931", "death": ""}, "I4": {"id": "I4", "name": "Thomas /Fenwick/", "sex": "M", "birth": "1904", "death": "1972"}, "I5": {"id": "I5", "name": "Edith /Marsh/", "sex": "F", "birth": "1908", "death": "1985"}, "I6": {"id": "I6", "name": "Alice /Marsh/", "sex": "F", "birth": "26 Apr 1935", "death": ""}}, "families": {"F1": {"id": "F1", "husb": "I2", "wife": "I3", "children": ["I1"]}, "F2": {"id": "F2", "husb": "I4", "wife": "I5", "children": ["I3", "I6"]}}};</script>
+<script>
+// ============================================================
+// VR GRID LAYOUT PROTOTYPE
+// Fixed grid placement: gen = row, family-grouped slots = col
+// No collision detection, no post-placement shifting
+// ============================================================
+
+let DATA = null;
+let ANCHOR_ID = 'I126'; // John Spencer Harrow
+
+// ---- GED parser ----
+function parseGed(text) {
+  const individuals = {};
+  const families = {};
+  
+  // Split into records
+  const lines = text.split(/\r?\n/);
+  let currentRecord = null;
+  let currentId = null;
+  let currentType = null;
+  let currentBody = [];
+  let inBirt = false, inDeat = false, inMarr = false;
+  let birthDate = '', deathDate = '', marrDate = '';
+  
+  function flushRecord() {
+    if (!currentId || !currentType) return;
+    if (currentType === 'INDI') {
+      const nameLine = currentBody.find(l => l.startsWith('1 NAME '));
+      const sexLine = currentBody.find(l => l.startsWith('1 SEX '));
+      individuals[currentId] = {
+        id: currentId,
+        name: nameLine ? nameLine.substring(7).trim() : 'Unknown',
+        sex: sexLine ? sexLine.substring(7).trim() : '?',
+        birth: birthDate,
+        death: deathDate,
+        fams: currentBody.filter(l => l.startsWith('1 FAMS ')).map(l => l.match(/@(\w+)@/)?.[1]).filter(Boolean),
+        famc: currentBody.filter(l => l.startsWith('1 FAMC ')).map(l => l.match(/@(\w+)@/)?.[1]).filter(Boolean)
+      };
+    } else if (currentType === 'FAM') {
+      const husbLine = currentBody.find(l => l.startsWith('1 HUSB '));
+      const wifeLine = currentBody.find(l => l.startsWith('1 WIFE '));
+      const chilLines = currentBody.filter(l => l.startsWith('1 CHIL '));
+      families[currentId] = {
+        id: currentId,
+        husb: husbLine ? husbLine.match(/@(\w+)@/)?.[1] : null,
+        wife: wifeLine ? wifeLine.match(/@(\w+)@/)?.[1] : null,
+        children: chilLines.map(l => l.match(/@(\w+)@/)?.[1]).filter(Boolean),
+        marr: marrDate
+      };
+    }
+  }
+  
+  for (let line of lines) {
+    if (line.startsWith('0 @') && line.includes(' INDI')) {
+      flushRecord();
+      currentId = line.match(/@(\w+)@/)?.[1];
+      currentType = 'INDI';
+      currentBody = [];
+      birthDate = ''; deathDate = '';
+      inBirt = false; inDeat = false;
+    } else if (line.startsWith('0 @') && line.includes(' FAM')) {
+      flushRecord();
+      currentId = line.match(/@(\w+)@/)?.[1];
+      currentType = 'FAM';
+      currentBody = [];
+      marrDate = '';
+      inMarr = false;
+    } else if (line.startsWith('0 ')) {
+      flushRecord();
+      currentId = null; currentType = null;
+    } else if (currentId) {
+      currentBody.push(line);
+      if (line.startsWith('1 BIRT')) { inBirt = true; }
+      else if (line.startsWith('1 DEAT')) { inDeat = true; }
+      else if (line.startsWith('1 MARR')) { inMarr = true; }
+      else if (line.startsWith('2 DATE ') && inBirt) { birthDate = line.substring(7).trim(); }
+      else if (line.startsWith('2 DATE ') && inDeat) { deathDate = line.substring(7).trim(); }
+      else if (line.startsWith('2 DATE ') && inMarr) { marrDate = line.substring(7).trim(); }
+      else if (line.startsWith('1 ') && !line.startsWith('1 BIRT') && !line.startsWith('1 DEAT') && !line.startsWith('1 MARR')) { inBirt = false; inDeat = false; inMarr = false; }
+    }
+  }
+  flushRecord();
+  
+  return { individuals, families };
+}
+
+// ---- Build child->family map ----
+function buildChildToFamily(families) {
+  const map = {};
+  for (const fid in families) {
+    for (const childId of families[fid].children) {
+      map[childId] = fid;
+    }
+  }
+  return map;
+}
+
+// ---- BFS generation assignment ----
+function assignGenerations(individuals, families, childToFamily, anchorId) {
+  const generations = {};
+  const visited = new Set();
+  const queue = [anchorId];
+  generations[anchorId] = 0;
+  
+  while (queue.length > 0) {
+    const pid = queue.shift();
+    if (visited.has(pid)) continue;
+    visited.add(pid);
+    const gen = generations[pid];
+    
+    // Find spouse families
+    for (const fid in families) {
+      const fam = families[fid];
+      if (fam.husb === pid || fam.wife === pid) {
+        const spouse = fam.husb === pid ? fam.wife : fam.husb;
+        if (spouse && !visited.has(spouse) && generations[spouse] === undefined) {
+          generations[spouse] = gen;
+          queue.push(spouse);
+        }
+        for (const childId of fam.children) {
+          if (!visited.has(childId) && generations[childId] === undefined) {
+            generations[childId] = gen + 1;
+            queue.push(childId);
+          }
+        }
+      }
+    }
+    
+    // Find parent family
+    const parentFamId = childToFamily[pid];
+    if (parentFamId) {
+      const fam = families[parentFamId];
+      for (const parentId of [fam.husb, fam.wife]) {
+        if (parentId && !visited.has(parentId) && generations[parentId] === undefined) {
+          generations[parentId] = gen - 1;
+          queue.push(parentId);
+        }
+      }
+      // Siblings
+      for (const sibId of fam.children) {
+        if (sibId !== pid && !visited.has(sibId) && generations[sibId] === undefined) {
+          generations[sibId] = gen;
+          queue.push(sibId);
+        }
+      }
+    }
+  }
+  
+  return { generations, visited };
+}
+
+// ---- Find disconnected components ----
+function findDisconnected(individuals, families, visited) {
+  const all = new Set(Object.keys(individuals));
+  const disconnected = [...all].filter(id => !visited.has(id));
+  const alreadyGrouped = new Set();
+  const components = [];
+  
+  for (const pid of disconnected) {
+    if (alreadyGrouped.has(pid)) continue;
+    const comp = new Set();
+    const queue = [pid];
+    while (queue.length > 0) {
+      const p = queue.shift();
+      if (comp.has(p)) continue;
+      comp.add(p);
+      alreadyGrouped.add(p);
+      
+      for (const fid in families) {
+        const fam = families[fid];
+        if (fam.husb === p || fam.wife === p) {
+          const spouse = fam.husb === p ? fam.wife : fam.husb;
+          if (spouse && disconnected.includes(spouse) && !comp.has(spouse)) queue.push(spouse);
+          for (const c of fam.children) {
+            if (disconnected.includes(c) && !comp.has(c)) queue.push(c);
+          }
+        }
+        if (fam.children.includes(p)) {
+          for (const parent of [fam.husb, fam.wife]) {
+            if (parent && disconnected.includes(parent) && !comp.has(parent)) queue.push(parent);
+          }
+          for (const sib of fam.children) {
+            if (sib !== p && disconnected.includes(sib) && !comp.has(sib)) queue.push(sib);
+          }
+        }
+      }
+    }
+    components.push([...comp]);
+  }
+  
+  return components;
+}
+
+// ---- Family Zone Layout v6 ----
+// Each family unit gets its own ZONE: a contiguous block of columns
+// that no other family unit can use. Zones are allocated recursively.
+// Parents centered in their zone, children spread below.
+// Gap of 1+ cols between zones so families don't blend together.
+function assignSlots(individuals, families, childToFamily, generations, visited, anchorId) {
+  const CARD_W = parseInt(document.getElementById('cardW').value);
+  const CARD_H = parseInt(document.getElementById('cardH').value);
+  const GAP_X = parseInt(document.getElementById('gapX').value);
+  const GAP_Y = parseInt(document.getElementById('gapY').value);
+  const STEP_X = CARD_W + GAP_X;
+  const STEP_Y = CARD_H + GAP_Y;
+  
+  const byGen = {};
+  for (const [pid, gen] of Object.entries(generations)) { (byGen[gen] ||= []).push(pid); }
+  const genList = Object.keys(byGen).map(Number).sort((a, b) => a - b);
+  
+  const personSpouseFams = {};
+  const personParentFam = {};
+  for (const fid in families) {
+    const fam = families[fid];
+    if (fam.husb) (personSpouseFams[fam.husb] ||= []).push(fid);
+    if (fam.wife) (personSpouseFams[fam.wife] ||= []).push(fid);
+    for (const c of fam.children) personParentFam[c] = fid;
+  }
+  
+  // Build family units
+  const familyUnits = {};
+  for (const fid in families) {
+    const fam = families[fid];
+    const parents = [fam.husb, fam.wife].filter(p => p && visited.has(p));
+    const children = fam.children.filter(c => visited.has(c));
+    if (parents.length === 0 && children.length === 0) continue;
+    familyUnits[fid] = { fid, parents, children };
+  }
+  
+  // Compute zone width recursively — tight packing
+  // Width = sum of child sub-widths. No extra gap between siblings or zones.
+  // Min width = 2 (for parents)
+  const zoneWidths = {};
+  function computeZoneWidth(fid, visiting = new Set()) {
+    if (zoneWidths[fid] !== undefined) return zoneWidths[fid];
+    if (visiting.has(fid)) return 2;
+    visiting.add(fid);
+    const unit = familyUnits[fid];
+    if (!unit) return 2;
+    let childrenWidth = 0;
+    for (let i = 0; i < unit.children.length; i++) {
+      const c = unit.children[i];
+      const sFams = (personSpouseFams[c] || []).filter(sf => {
+        const sfam = families[sf]; if (!sfam) return false;
+        const spouse = sfam.husb === c ? sfam.wife : sfam.husb;
+        return spouse && visited.has(spouse);
+      });
+      if (sFams.length > 0) {
+        for (let j = 0; j < sFams.length; j++) {
+          childrenWidth += computeZoneWidth(sFams[j], visiting);
+        }
+      } else {
+        childrenWidth += 1;
+      }
+    }
+    zoneWidths[fid] = Math.max(2, childrenWidth);
+    return zoneWidths[fid];
+  }
+  for (const fid in families) computeZoneWidth(fid);
+  
+  // Root family: anchor's grandfather family
+  const anchorParentFam = personParentFam[anchorId];
+  let rootFam = anchorParentFam;
+  if (anchorParentFam && families[anchorParentFam]) {
+    const fam = families[anchorParentFam];
+    if (fam.husb && visited.has(fam.husb)) {
+      const grandFam = personParentFam[fam.husb];
+      if (grandFam && families[grandFam]) rootFam = grandFam;
+    }
+  }
+  
+  // Place zones recursively
+  const colMap = {};
+  const placedZones = new Set();
+  
+  function placeZone(fid, startCol) {
+    if (placedZones.has(fid)) return startCol + zoneWidths[fid];
+    const unit = familyUnits[fid];
+    if (!unit) return startCol;
+    const width = zoneWidths[fid] || 2;
+    placedZones.add(fid);
+    
+    // Parents at center of zone
+    if (unit.parents.length === 2) {
+      const center = startCol + (width / 2);
+      colMap[unit.parents[0]] = Math.floor(center) - 1;
+      colMap[unit.parents[1]] = Math.floor(center);
+      if (colMap[unit.parents[1]] <= colMap[unit.parents[0]]) colMap[unit.parents[1]] = colMap[unit.parents[0]] + 1;
+    } else if (unit.parents.length === 1) {
+      colMap[unit.parents[0]] = startCol + Math.floor(width / 2);
+    }
+    
+    // Children left to right, tight packing — 1 col gap between siblings
+    // Skip children that are already placed (they're in the tree through
+    // their own descendants or through another family)
+    let col = startCol;
+    for (let i = 0; i < unit.children.length; i++) {
+      const c = unit.children[i];
+      // Skip if already placed (ancestor expansion: don't re-place siblings)
+      if (colMap[c] !== undefined) continue;
+      const sFams = (personSpouseFams[c] || []).filter(sf => {
+        const sfam = families[sf]; if (!sfam) return false;
+        const spouse = sfam.husb === c ? sfam.wife : sfam.husb;
+        return spouse && visited.has(spouse);
+      });
+      if (sFams.length > 0) {
+        for (let j = 0; j < sFams.length; j++) {
+          const sf = sFams[j];
+          if (placedZones.has(sf)) continue;
+          const cw = zoneWidths[sf] || 2;
+          // Child + spouse placed at current col
+          colMap[c] = col;
+          const sfam = families[sf];
+          const spouse = sfam.husb === c ? sfam.wife : sfam.husb;
+          if (spouse && colMap[spouse] === undefined) colMap[spouse] = col + 1;
+          // Place sub-zone starting at child's position
+          placeZone(sf, col);
+          col += cw;
+        }
+      } else {
+        colMap[c] = col;
+        col += 1;
+      }
+      // No extra gap between siblings — just Gap X (8px) between cards
+    }
+    return startCol + width;
+  }
+  
+  placeZone(rootFam, 100);
+  
+  // Place anchor's own family
+  const anchorSFams = (personSpouseFams[anchorId] || []).filter(fid => families[fid] && !placedZones.has(fid));
+  for (const fid of anchorSFams) {
+    if (colMap[anchorId] !== undefined) {
+      const fam = families[fid];
+      const spouse = fam.husb === anchorId ? fam.wife : fam.husb;
+      if (spouse && colMap[spouse] === undefined) colMap[spouse] = colMap[anchorId] + 1;
+      placeZone(fid, colMap[anchorId]);
+    }
+  }
+  
+  // Place ancestors above root — only place parents, don't re-place children
+  // that are already in the tree through their own descendants.
+  let waves = 0;
+  while (waves < 30) {
+    waves++;
+    const current = [...placedZones];
+    let newPlacements = false;
+    for (const fid of current) {
+      const fam = families[fid];
+      for (const pid of [fam.husb, fam.wife].filter(p => p && visited.has(p))) {
+        const pfid = personParentFam[pid];
+        if (pfid && families[pfid] && !placedZones.has(pfid)) {
+          const pw = zoneWidths[pfid] || 2;
+          // Place parent family centered above this person
+          // But ONLY if we're placing it above the root (not overlapping descendants)
+          placeZone(pfid, Math.round((colMap[pid] || 100) - pw / 2));
+          newPlacements = true;
+        }
+      }
+    }
+    if (!newPlacements) break;
+  }
+  
+  // Place remaining
+  let nextCol = 1000;
+  for (const pid of visited) { if (colMap[pid] === undefined) colMap[pid] = nextCol++; }
+  
+  // Overlap resolution
+  let shiftPasses = 0;
+  while (shiftPasses < 10) {
+    shiftPasses++;
+    let shifts = 0;
+    for (const gen of genList) {
+      const people = byGen[gen] || [];
+      people.sort((a, b) => colMap[a] - colMap[b]);
+      for (let i = 0; i < people.length - 1; i++) {
+        // Cards are 1 col wide. Overlap if positions are less than 1 col apart.
+        if (colMap[people[i]] + 1 > colMap[people[i + 1]]) {
+          colMap[people[i + 1]] = colMap[people[i]] + 1;
+          shifts++;
+        }
+      }
+    }
+    if (shifts === 0) break;
+  }
+  
+  // Convert to pixels
+  const allCols = Object.values(colMap).filter(c => c !== undefined && !isNaN(c));
+  const minCol = Math.min(...allCols);
+  const minGen = Math.min(...genList);
+  const positions = {};
+  for (const pid in colMap) {
+    if (!visited.has(pid)) continue;
+    positions[pid] = { x: (colMap[pid] - minCol) * STEP_X + 20, y: (generations[pid] - minGen) * STEP_Y + 20 };
+  }
+  return positions;
+}
+
+// ---- Build connections from final positions ----
+function buildConnections(individuals, families, positions, visited) {
+  const connections = [];
+  
+  for (const fid in families) {
+    const fam = families[fid];
+    const husbPos = fam.husb ? positions[fam.husb] : null;
+    const wifePos = fam.wife ? positions[fam.wife] : null;
+    
+    // Marriage line: horizontal between spouses
+    if (husbPos && wifePos && visited.has(fam.husb) && visited.has(fam.wife)) {
+      connections.push({
+        type: 'marriage',
+        x1: husbPos.x, y1: husbPos.y,
+        x2: wifePos.x, y2: wifePos.y,
+        husbId: fam.husb, wifeId: fam.wife
+      });
+    }
+    
+    // Parent-child: from couple midpoint (or single parent) down to each child
+    const placedChildren = fam.children.filter(c => positions[c] && visited.has(c));
+    if (placedChildren.length === 0) continue;
+    
+    let parentMidX, parentY;
+    if (husbPos && wifePos) {
+      parentMidX = (husbPos.x + wifePos.x) / 2;
+      parentY = (husbPos.y + wifePos.y) / 2;
+    } else if (husbPos) {
+      parentMidX = husbPos.x + 70; // half card width
+      parentY = husbPos.y;
+    } else if (wifePos) {
+      parentMidX = wifePos.x + 70;
+      parentY = wifePos.y;
+    } else {
+      continue; // no parents placed
+    }
+    
+    // One bus connector per family
+    connections.push({
+      type: 'parent-child-bus',
+      parentMidX: parentMidX,
+      parentY: parentY,
+      children: placedChildren.map(cid => ({
+        childId: cid,
+        childX: positions[cid].x + 70, // center of card
+        childY: positions[cid].y
+      }))
+    });
+  }
+  
+  return connections;
+}
+
+// ---- Build family units for visual grouping ----
+function buildFamilyUnits(families, positions, generations, visited) {
+  const units = [];
+  for (const fid in families) {
+    const fam = families[fid];
+    const husbPos = fam.husb ? positions[fam.husb] : null;
+    const wifePos = fam.wife ? positions[fam.wife] : null;
+    const placedChildren = fam.children.filter(c => positions[c] && visited.has(c));
+    if (!husbPos && !wifePos && placedChildren.length === 0) continue;
+    
+    // Get all member positions
+    const memberPositions = [];
+    if (husbPos && visited.has(fam.husb)) memberPositions.push({ pos: husbPos, gen: generations[fam.husb] });
+    if (wifePos && visited.has(fam.wife)) memberPositions.push({ pos: wifePos, gen: generations[fam.wife] });
+    for (const cid of placedChildren) {
+      memberPositions.push({ pos: positions[cid], gen: generations[cid] });
+    }
+    if (memberPositions.length < 2) continue; // skip singletons
+    
+    // Find bounding box of this family unit
+    const minX = Math.min(...memberPositions.map(m => m.pos.x));
+    const maxX = Math.max(...memberPositions.map(m => m.pos.x));
+    const minGen = Math.min(...memberPositions.map(m => m.gen));
+    const maxGen = Math.max(...memberPositions.map(m => m.gen));
+    
+    units.push({
+      fid,
+      minX, maxX, minGen, maxGen,
+      hasChildren: placedChildren.length > 0,
+      parentCount: (husbPos && visited.has(fam.husb) ? 1 : 0) + (wifePos && visited.has(fam.wife) ? 1 : 0)
+    });
+  }
+  return units;
+}
+
+// ---- Render ----
+function render(individuals, generations, positions, connections, visited, anchorId, families) {
+  const CARD_W = parseInt(document.getElementById('cardW').value);
+  const CARD_H = parseInt(document.getElementById('cardH').value);
+  const container = document.getElementById('treeContainer');
+  const svgLayer = document.getElementById('treeSvg');
+  
+  // Clear
+  container.querySelectorAll('.card, .gen-label, .family-panel, svg').forEach(el => el.remove());
+  
+  // Calculate bounds
+  const allX = Object.values(positions).map(p => p.x);
+  const allY = Object.values(positions).map(p => p.y);
+  const maxX = Math.max(...allX) + CARD_W + 50;
+  const maxY = Math.max(...allY) + CARD_H + 50;
+  
+  // Draw family unit panels (behind everything)
+  const STEP_Y = CARD_H + parseInt(document.getElementById('gapY').value);
+  if (families) {
+    const units = buildFamilyUnits(families, positions, generations, visited);
+    for (const unit of units) {
+      const panel = document.createElement('div');
+      panel.className = 'family-panel';
+      const padding = 8;
+      const panelX = unit.minX - padding;
+      const panelY = (unit.minGen - Math.min(...Object.values(generations))) * STEP_Y + 20 - padding;
+      const panelW = (unit.maxX - unit.minX) + CARD_W + padding * 2;
+      // If parents and children, span from parent row to child row
+      let panelH;
+      if (unit.hasChildren && unit.maxGen > unit.minGen) {
+        panelH = (unit.maxGen - unit.minGen) * STEP_Y + CARD_H + padding * 2;
+      } else {
+        panelH = CARD_H + padding * 2;
+      }
+      panel.style.left = panelX + 'px';
+      panel.style.top = panelY + 'px';
+      panel.style.width = panelW + 'px';
+      panel.style.height = panelH + 'px';
+      container.appendChild(panel);
+    }
+  }
+  
+  // Create SVG for connections
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', maxX);
+  svg.setAttribute('height', maxY);
+  svg.style.position = 'absolute';
+  svg.style.top = '0';
+  svg.style.left = '0';
+  svg.style.pointerEvents = 'none';
+  svg.style.zIndex = '1';
+  
+  // Draw connections
+  for (const conn of connections) {
+    if (conn.type === 'marriage') {
+      // Horizontal line between spouse cards (at card center height)
+      const y = conn.y1 + 25; // center of card
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', conn.x1 + (conn.x2 > conn.x1 ? CARD_W : 0));
+      line.setAttribute('y1', y);
+      line.setAttribute('x2', conn.x2 + (conn.x2 > conn.x1 ? 0 : CARD_W));
+      line.setAttribute('y2', y);
+      line.setAttribute('stroke', '#999');
+      line.setAttribute('stroke-width', 1.5);
+      svg.appendChild(line);
+    } else if (conn.type === 'parent-child-bus') {
+      const busY = (conn.parentY + conn.children[0].childY) / 2;
+      
+      // Vertical from parent midpoint down to bus
+      const v1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      v1.setAttribute('x1', conn.parentMidX);
+      v1.setAttribute('y1', conn.parentY + CARD_H);
+      v1.setAttribute('x2', conn.parentMidX);
+      v1.setAttribute('y2', busY);
+      v1.setAttribute('stroke', '#999');
+      v1.setAttribute('stroke-width', 1.5);
+      svg.appendChild(v1);
+      
+      // Horizontal bus from leftmost to rightmost child
+      const minChildX = Math.min(...conn.children.map(c => c.childX));
+      const maxChildX = Math.max(...conn.children.map(c => c.childX));
+      if (conn.children.length > 1) {
+        const hBus = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        hBus.setAttribute('x1', Math.min(minChildX, conn.parentMidX));
+        hBus.setAttribute('y1', busY);
+        hBus.setAttribute('x2', Math.max(maxChildX, conn.parentMidX));
+        hBus.setAttribute('y2', busY);
+        hBus.setAttribute('stroke', '#999');
+        hBus.setAttribute('stroke-width', 1.5);
+        svg.appendChild(hBus);
+      }
+      
+      // Vertical from bus down to each child
+      for (const child of conn.children) {
+        const vChild = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        vChild.setAttribute('x1', child.childX);
+        vChild.setAttribute('y1', busY);
+        vChild.setAttribute('x2', child.childX);
+        vChild.setAttribute('y2', child.childY);
+        vChild.setAttribute('stroke', '#999');
+        vChild.setAttribute('stroke-width', 1.5);
+        svg.appendChild(vChild);
+      }
+    }
+  }
+  
+  svgLayer.appendChild(svg);
+  
+  // Draw cards
+  for (const pid in positions) {
+    if (!visited.has(pid)) continue;
+    const pos = positions[pid];
+    const person = individuals[pid];
+    if (!person) continue;
+    
+    const card = document.createElement('div');
+    card.className = 'card ' + (person.sex === 'M' ? 'male' : person.sex === 'F' ? 'female' : 'unknown');
+    if (pid === anchorId) card.classList.add('anchor');
+    card.style.left = pos.x + 'px';
+    card.style.top = pos.y + 'px';
+    
+    // Clean up name (remove slashes from GEDCOM format)
+    const cleanName = person.name.replace(/\//g, '').trim();
+    const dates = (person.birth || '') + (person.birth && person.death ? ' - ' : '') + (person.death || '');
+    
+    card.innerHTML = `
+      <div class="card-name">${cleanName}</div>
+      <div class="card-dates">${dates || '?'}</div>
+      <div class="card-gen">G${generations[pid]}</div>
+    `;
+    
+    card.title = `${cleanName}\n${dates}\nID: ${pid}\nGen: ${generations[pid]}`;
+    container.appendChild(card);
+  }
+  
+  // Draw generation labels
+  const genSet = new Set(Object.values(generations));
+  const minGen = Math.min(...genSet);
+  // STEP_Y already declared above for family panels
+  for (const gen of genSet) {
+    const normGen = gen - minGen;
+    const label = document.createElement('div');
+    label.className = 'gen-label';
+    label.style.top = (normGen * STEP_Y + 35) + 'px';
+    label.textContent = gen === 0 ? 'Anchor' : gen < 0 ? `Gen ${gen}` : `Gen +${gen}`;
+    container.appendChild(label);
+  }
+  
+  // Update stats
+  const stats = document.getElementById('stats');
+  stats.textContent = ` | ${visited.size} people, ${connections.length} connections | Canvas: ${maxX}x${maxY}`;
+  
+  // Store for fit function
+  window._treeBounds = { maxX, maxY };
+}
+
+// ---- Fit to screen ----
+function fitToScreen() {
+  const container = document.getElementById('treeContainer');
+  const bounds = window._treeBounds;
+  if (!bounds) return;
+  
+  const cw = container.clientWidth - 40;
+  const ch = container.clientHeight - 40;
+  const scale = Math.min(cw / bounds.maxX, ch / bounds.maxY, 1);
+  
+  const svgLayer = document.getElementById('treeSvg');
+  const content = container.querySelectorAll('.card, .gen-label, svg');
+  
+  // Apply transform via CSS zoom
+  container.style.transformOrigin = '0 0';
+  container.style.transform = `scale(${scale})`;
+  
+  // Adjust container scroll area
+  const scaledW = bounds.maxX * scale;
+  const scaledH = bounds.maxY * scale;
+  svgLayer.style.width = scaledW + 'px';
+  svgLayer.style.height = scaledH + 'px';
+}
+
+// ---- Main layout function ----
+function doLayout() {
+  if (!DATA) return;
+  
+  const { individuals, families } = DATA;
+  const childToFamily = buildChildToFamily(families);
+  const { generations, visited } = assignGenerations(individuals, families, childToFamily, ANCHOR_ID);
+  const positions = assignSlots(individuals, families, childToFamily, generations, visited, ANCHOR_ID);
+  const connections = buildConnections(individuals, families, positions, visited);
+  
+  render(individuals, generations, positions, connections, visited, ANCHOR_ID, families);
+}
+
+// ---- Load default GED data ----
+function loadDefaultGed() {
+  // Use embedded TREE_DATA from tree-data.js
+  DATA = {
+    individuals: EMBEDDED_DATA.individuals,
+    families: EMBEDDED_DATA.families
+  };
+  
+  // Populate anchor select with some known people
+  const select = document.getElementById('anchorSelect');
+  select.innerHTML = '';
+  const anchorCandidates = ['I126', 'I122', 'I399', 'I300', 'I488', 'I472'];
+  for (const pid of anchorCandidates) {
+    if (DATA.individuals[pid]) {
+      const opt = document.createElement('option');
+      opt.value = pid;
+      opt.textContent = DATA.individuals[pid].name.replace(/\//g, '').trim() + ' (b.' + (DATA.individuals[pid].birth || '?') + ')';
+      select.appendChild(opt);
+    }
+  }
+  select.value = ANCHOR_ID;
+  
+  doLayout();
+}
+
+// ---- Event handlers ----
+document.getElementById('layoutBtn').addEventListener('click', doLayout);
+document.getElementById('fitBtn').addEventListener('click', fitToScreen);
+document.getElementById('anchorSelect').addEventListener('change', (e) => {
+  ANCHOR_ID = e.target.value;
+  doLayout();
+});
+
+['cardW', 'cardH', 'gapX', 'gapY'].forEach(id => {
+  document.getElementById(id).addEventListener('change', doLayout);
+});
+
+document.getElementById('loadGedBtn').addEventListener('click', () => {
+  document.getElementById('gedFile').click();
+});
+
+document.getElementById('gedFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const text = await file.text();
+  DATA = parseGed(text);
+  
+  // Find people born 1960-1970 as anchor candidates
+  const select = document.getElementById('anchorSelect');
+  select.innerHTML = '';
+  const candidates = Object.values(DATA.individuals)
+    .filter(p => {
+      const y = parseInt((p.birth || '').match(/\d{4}/)?.[0] || 0);
+      return y >= 1955 && y <= 1975;
+    })
+    .sort((a, b) => (a.birth || '').localeCompare(b.birth || ''));
+  
+  for (const person of candidates.slice(0, 20)) {
+    const opt = document.createElement('option');
+    opt.value = person.id;
+    opt.textContent = person.name.replace(/\//g, '').trim() + ' (b.' + (person.birth || '?') + ')';
+    select.appendChild(opt);
+  }
+  
+  // Default to I126 if available
+  if (DATA.individuals['I126']) {
+    ANCHOR_ID = 'I126';
+    select.value = ANCHOR_ID;
+  } else if (candidates.length > 0) {
+    ANCHOR_ID = candidates[0].id;
+    select.value = ANCHOR_ID;
+  }
+  
+  doLayout();
+});
+
+// ---- Init ----
+loadDefaultGed();
+</script>
+
+</body>
+</html>
